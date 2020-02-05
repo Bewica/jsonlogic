@@ -32,7 +32,6 @@ func convertInterfaceToReader(i interface{}) io.Reader {
 	encoder.Encode(i)
 
 	return &result
-
 }
 
 func GetScenariosFromOfficialTestSuite() Tests {
@@ -41,7 +40,6 @@ func GetScenariosFromOfficialTestSuite() Tests {
 	response, err := http.Get("http://jsonlogic.com/tests.json")
 	if err != nil {
 		log.Fatal(err)
-
 		return tests
 	}
 
