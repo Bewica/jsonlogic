@@ -1,4 +1,4 @@
-module github.com/bewica/jsonlogic
+module github.com/bewica/jsonlogic/v2
 
 go 1.13
 
