@@ -2,11 +2,10 @@ package jsonlogic
 
 import (
 	"reflect"
-
 )
 
 func less(a, b interface{}) bool {
-	if isNumber(a) || isNumber(b) {
+	if isNumber(a) && isNumber(b) {
 		return toNumber(b) > toNumber(a)
 	}
 
@@ -25,10 +24,10 @@ func hardEquals(a, b interface{}) bool {
 }
 
 func equals(a, b interface{}) bool {
-	if isNumber(a) {
+	if isNumber(a) && isNumber(b) {
 		return toNumber(a) == toNumber(b)
 	}
-	if isBool(a) {
+	if isBool(a) && isNumber(b) {
 		return isTrue(a) == isTrue(b)
 	}
 	return toString(a) == toString(b)

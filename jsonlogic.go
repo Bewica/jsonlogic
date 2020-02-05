@@ -133,7 +133,7 @@ func _inSorted(value interface{}, values interface{}) bool {
 		return toString(element) >= toString(value)
 	}
 
-	i := sort.Search(len(valuesSlice),  findElement)
+	i := sort.Search(len(valuesSlice), findElement)
 	if i >= len(valuesSlice) {
 		return false
 	}
