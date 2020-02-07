@@ -3,6 +3,7 @@ package jsonlogic
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -715,30 +716,35 @@ func apply(rules, data interface{}) interface{} {
 // Apply read the rule and it's data from io.Reader, executes it
 // and write back a JSON into an io.Writer result
 func Apply(rule, data io.Reader, result io.Writer) error {
+	if rule == nil {
+		return fmt.Errorf("error Apply-ing nil rule")
+	}
+	if data == nil {
+		// best effort, nil data is likely no-data needed
+		data = strings.NewReader("{}")
+	}
 	var _rule interface{}
 	var _data interface{}
 
 	decoderRule := json.NewDecoder(rule)
 	err := decoderRule.Decode(&_rule)
 	if err != nil {
-		return err
+		return fmt.Errorf("error parsing rule: %w", err)
 	}
 
 	decoderData := json.NewDecoder(data)
 	err = decoderData.Decode(&_data)
 	if err != nil {
-		return err
+		return fmt.Errorf("error parsing data %w", err)
 	}
 
 	encoder := json.NewEncoder(result)
-
-	if isMap(_rule) {
-		encoder.Encode(apply(_rule, _data))
-	} else {
-		encoder.Encode(_rule)
+	switch r := _rule.(type) {
+	case map[string]interface{}:
+		return encoder.Encode(apply(r, _data))
+	default:
+		return encoder.Encode(r)
 	}
-
-	return nil
 }
 
 func ApplyRaw(rule, data json.RawMessage) (json.RawMessage, error) {
