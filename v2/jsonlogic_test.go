@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
-	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,87 +13,99 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type (
-	Test struct {
-		Rule     io.Reader
-		Data     io.Reader
-		Expected io.Reader
-	}
-
-	Tests []Test
-)
-
-func convertInterfaceToReader(i interface{}) io.Reader {
-	var result bytes.Buffer
-
-	encoder := json.NewEncoder(&result)
-	encoder.Encode(i)
-
-	return &result
+type Test struct {
+	Rule     []byte
+	Data     []byte
+	Expected []byte
 }
 
-func GetScenariosFromOfficialTestSuite() Tests {
-	var tests Tests
+func ReadTestsFromFile() ([]Test, error) {
+	var items []interface{}
 
-	response, err := http.Get("http://jsonlogic.com/tests.json")
+	buf, err := ioutil.ReadFile("tests.json")
 	if err != nil {
-		log.Fatal(err)
-		return tests
+		return nil, err
 	}
 
-	buffer, _ := ioutil.ReadAll(response.Body)
-
-	response.Body.Close()
-
-	var scenarios []interface{}
-
-	err = json.Unmarshal(buffer, &scenarios)
-	if err != nil {
-		log.Fatal(err)
-
-		return tests
+	if err := json.Unmarshal(buf, &items); err != nil {
+		return nil, err
 	}
 
-	// add missing but relevant scenarios
-	var rule []interface{}
-
-	scenarios = append(scenarios,
-		append(rule,
-			make(map[string]interface{}, 0),
-			make(map[string]interface{}, 0),
-			make(map[string]interface{}, 0)))
-
-	for _, scenario := range scenarios {
-		if reflect.ValueOf(scenario).Kind() == reflect.String {
+	var tests []Test
+	for _, s := range items {
+		switch v := s.(type) {
+		case string:
+			// filter strings/comments
 			continue
+		case []interface{}:
+			if len(v) != 3 {
+				return nil, fmt.Errorf("unexpected format in tests.json, expected {rule, data, expected_result}, got len==%d", len(v))
+			}
+			var rule, data, expected bytes.Buffer
+			if err := json.NewEncoder(&rule).Encode(v[0]); err != nil {
+				return nil, fmt.Errorf("unexpected error reading rule as []byte for %v", v)
+			}
+			if err := json.NewEncoder(&data).Encode(v[1]); err != nil {
+				return nil, fmt.Errorf("unexpected error reading data as []byte for %v", v)
+			}
+			if err := json.NewEncoder(&expected).Encode(v[2]); err != nil {
+				return nil, fmt.Errorf("unexpected error reading expected as []byte for %v", v)
+			}
+			tests = append(tests, Test{rule.Bytes(), data.Bytes(), expected.Bytes()})
+		default:
+			return nil, fmt.Errorf("unexpected item of type %T in tests.json", v)
 		}
-
-		tests = append(tests, Test{
-			Rule:     convertInterfaceToReader(scenario.([]interface{})[0]),
-			Data:     convertInterfaceToReader(scenario.([]interface{})[1]),
-			Expected: convertInterfaceToReader(scenario.([]interface{})[2]),
-		})
 	}
 
-	return tests
+	if len(tests) < 275 {
+		return nil, fmt.Errorf("unpextected length of tests: %d", len(tests))
+	}
+
+	return tests, nil
 }
 
 func TestRulesFromJsonLogic(t *testing.T) {
-	tests := GetScenariosFromOfficialTestSuite()
+	tests, err := ReadTestsFromFile()
+	if err != nil {
+		t.Fatalf("unpexpected error reading tests from file: %v", err)
+	}
 
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("Scenario_%d", i), func(t *testing.T) {
 			var result bytes.Buffer
 
-			err := Apply(test.Rule, test.Data, &result)
+			err := Apply(bytes.NewBuffer(test.Rule), bytes.NewBuffer(test.Data), &result)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if b, err := ioutil.ReadAll(test.Expected); err == nil {
-				assert.JSONEq(t, string(b), result.String())
+			if !reflect.DeepEqual(result.Bytes(), test.Expected) {
+				t.Errorf("expected %s, got %s", test.Expected, result.String())
 			}
 		})
+	}
+}
+
+func BenchmarkRulesFromJsonLogic(b *testing.B) {
+	tests, err := ReadTestsFromFile()
+	if err != nil {
+		b.Fatalf("unpexpected error reading tests from file: %v", err)
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for _, test := range tests {
+			var result bytes.Buffer
+
+			err := Apply(bytes.NewBuffer(test.Rule), bytes.NewBuffer(test.Data), &result)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			if !reflect.DeepEqual(result.Bytes(), test.Expected) {
+				b.Errorf("expected %s, got %s", test.Expected, result.String())
+			}
+		}
 	}
 }
 
